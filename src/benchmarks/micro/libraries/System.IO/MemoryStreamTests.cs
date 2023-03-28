@@ -1,6 +1,8 @@
+#if NET8_0_OR_GREATER
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Extensions;
 using MicroBenchmarks;
-using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace System.IO.Tests
@@ -8,9 +10,9 @@ namespace System.IO.Tests
     [BenchmarkCategory(Categories.Libraries)]
     public class MemoryStreamTests
     {
-        private Stream _stream;
-        private byte[] _buffer;
-        private static Random s_random = new Random(42);
+        private byte[] _readWriteBuffer;
+        private byte[] _streamBufferArray;
+        private Memory<byte> _streamBufferMemory;
 
         [Params(false, true)]
         public bool UseMemoryCtor;
@@ -18,55 +20,81 @@ namespace System.IO.Tests
         [Params(64, 1024, 10_000)]
         public int BufferSize;
 
-        [GlobalSetup(Targets = new[] {nameof(ReadAll), nameof(ReadAllAsync)})]
+        [GlobalSetup(Targets = new[] { nameof(ReadByteArray), nameof(ReadSpan), nameof(ReadAsyncByteArray), nameof(ReadAsyncMemory) })]
         public void ReadSetup()
         {
-            _buffer = new byte[BufferSize];
-            Setup();
+            _readWriteBuffer = new byte[BufferSize];
+            _streamBufferArray = ValuesGenerator.Array<byte>(BufferSize);
+            _streamBufferMemory = _streamBufferArray;
         }
 
-        [GlobalSetup(Targets = new[] {nameof(WriteAll), nameof(WriteAllAsync)})]
+        [GlobalSetup(Targets = new[] { nameof(WriteByteArray), nameof(WriteSpan), nameof(WriteAsyncByteArray), nameof(WriteAsyncMemory) })]
         public void WriteSetup()
         {
-            _buffer = new byte[BufferSize];
-            s_random.NextBytes(_buffer);
-            Setup();
+            _readWriteBuffer = ValuesGenerator.Array<byte>(BufferSize);
+            _streamBufferArray = new byte[BufferSize];
+            _streamBufferMemory = _streamBufferArray;
         }
 
-        public void Setup()
+        private Stream GetMemoryStream() => UseMemoryCtor ?
+                new MemoryStream(_streamBufferMemory) :
+                new MemoryStream(_streamBufferArray);
+
+        [Benchmark]
+        public void ReadByteArray()
         {
-            if (UseMemoryCtor)
-            {
-                Type type = typeof(MemoryStream);
-                ConstructorInfo ctor = type.GetConstructor(new[] { typeof(Memory<byte>) });
-                _stream = (Stream)ctor.Invoke(new object[] { new byte[BufferSize].AsMemory() });
-            }
-            else
-            {
-                _stream = new MemoryStream(new byte[BufferSize]);
-            }
+            using var memoryStream = GetMemoryStream();
+            while (memoryStream.Read(_readWriteBuffer, 0, _readWriteBuffer.Length) > 0) ;
         }
 
-        [GlobalCleanup] 
-        public void GlobalCleanup()
+        [Benchmark]
+        public void ReadSpan()
         {
-            _stream.Dispose();
+            using var memoryStream = GetMemoryStream();
+            while (memoryStream.Read(_readWriteBuffer) > 0) ;
         }
 
         [Benchmark]
-        public void ReadAll()
-            => _stream.ReadExactly(_buffer);
+        public async Task ReadAsyncByteArray()
+        {
+            using var memoryStream = GetMemoryStream();
+            while (await memoryStream.ReadAsync(_readWriteBuffer, 0, _readWriteBuffer.Length, CancellationToken.None) > 0) ;
+        }
 
         [Benchmark]
-        public ValueTask ReadAllAsync()
-            => _stream.ReadExactlyAsync(_buffer);
+        public async Task ReadAsyncMemory()
+        {
+            using var memoryStream = GetMemoryStream();
+            while (await memoryStream.ReadAsync(_readWriteBuffer, CancellationToken.None) > 0) ;
+        }
 
         [Benchmark]
-        public void WriteAll()
-            => _stream.Write(_buffer);
+        public void WriteByteArray()
+        {
+            using var memoryStream = GetMemoryStream();
+            memoryStream.Write(_readWriteBuffer, 0, _readWriteBuffer.Length);
+        }
 
         [Benchmark]
-        public ValueTask WriteAllAsync()
-            => _stream.WriteAsync(_buffer);
+        public void WriteSpan()
+        {
+            using var memoryStream = GetMemoryStream();
+            memoryStream.Write(_readWriteBuffer);
+        }
+
+        [Benchmark]
+        public async Task WriteAsyncByteArray()
+        {
+            using var memoryStream = GetMemoryStream();
+            await memoryStream.WriteAsync(_readWriteBuffer, 0, _readWriteBuffer.Length, CancellationToken.None);
+        }
+
+        [Benchmark]
+        public async Task WriteAsyncMemory()
+        {
+            using var memoryStream = GetMemoryStream();
+            await memoryStream.WriteAsync(_readWriteBuffer, CancellationToken.None);
+        }
     }
 }
+#endif
