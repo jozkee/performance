@@ -17,7 +17,7 @@ namespace System.IO.Tests
         [Params(false, true)]
         public bool UseMemoryCtor;
 
-        [Params(64, 1024, 10_000)]
+        [Params(64, 1024, 10_000, 64_000)]
         public int BufferSize;
 
         [GlobalSetup(Targets = new[] { nameof(ReadByteArray), nameof(ReadSpan), nameof(ReadAsyncByteArray), nameof(ReadAsyncMemory) })]
@@ -55,6 +55,7 @@ namespace System.IO.Tests
         }
 
         [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
         public async Task ReadAsyncByteArray()
         {
             using var memoryStream = GetMemoryStream();
@@ -62,6 +63,7 @@ namespace System.IO.Tests
         }
 
         [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
         public async Task ReadAsyncMemory()
         {
             using var memoryStream = GetMemoryStream();
@@ -83,6 +85,7 @@ namespace System.IO.Tests
         }
 
         [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
         public async Task WriteAsyncByteArray()
         {
             using var memoryStream = GetMemoryStream();
@@ -90,6 +93,7 @@ namespace System.IO.Tests
         }
 
         [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
         public async Task WriteAsyncMemory()
         {
             using var memoryStream = GetMemoryStream();
