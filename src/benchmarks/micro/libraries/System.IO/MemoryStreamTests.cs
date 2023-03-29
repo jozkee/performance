@@ -1,0 +1,122 @@
+#if NET8_0_OR_GREATER
+using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Extensions;
+using MicroBenchmarks;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace System.IO.Tests
+{
+    [BenchmarkCategory(Categories.Libraries)]
+    public class MemoryStreamTests
+    {
+        private byte[] _readWriteBuffer;
+        private byte[] _streamBufferArray;
+        //private Memory<byte> _streamBufferMemory;
+
+        //[Params(false, true)]
+        //public bool UseMemoryCtor;
+
+        [Params(64, 1024, 10_000, 64_000)]
+        public int BufferSize;
+
+        [GlobalSetup(Targets = new[] { nameof(ReadByteArray), nameof(ReadSpan), nameof(ReadAsyncByteArray), nameof(ReadAsyncMemory), nameof(CopyTo), nameof(CopyToAsync) })]
+        public void ReadSetup()
+        {
+            _readWriteBuffer = new byte[BufferSize];
+            _streamBufferArray = ValuesGenerator.Array<byte>(BufferSize);
+            //_streamBufferMemory = _streamBufferArray;
+        }
+
+        [GlobalSetup(Targets = new[] { nameof(WriteByteArray), nameof(WriteSpan), nameof(WriteAsyncByteArray), nameof(WriteAsyncMemory) })]
+        public void WriteSetup()
+        {
+            _readWriteBuffer = ValuesGenerator.Array<byte>(BufferSize);
+            _streamBufferArray = new byte[BufferSize];
+            //_streamBufferMemory = _streamBufferArray;
+        }
+
+        private Stream GetMemoryStream() => new MemoryStream(_streamBufferArray);
+        //=> UseMemoryCtor ?
+        //    new MemoryStream(_streamBufferMemory) :
+        //    new MemoryStream(_streamBufferArray);
+
+        [Benchmark]
+        public void ReadByteArray()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            while (memoryStream.Read(_readWriteBuffer, 0, _readWriteBuffer.Length) > 0) ;
+        }
+
+        [Benchmark]
+        public void ReadSpan()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            while (memoryStream.Read(_readWriteBuffer) > 0) ;
+        }
+
+        [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
+        public async Task ReadAsyncByteArray()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            while (await memoryStream.ReadAsync(_readWriteBuffer, 0, _readWriteBuffer.Length, CancellationToken.None) > 0) ;
+        }
+
+        [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
+        public async Task ReadAsyncMemory()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            while (await memoryStream.ReadAsync(_readWriteBuffer, CancellationToken.None) > 0) ;
+        }
+
+        [Benchmark]
+        public void WriteByteArray()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            memoryStream.Write(_readWriteBuffer, 0, _readWriteBuffer.Length);
+        }
+
+        [Benchmark]
+        public void WriteSpan()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            memoryStream.Write(_readWriteBuffer);
+        }
+
+        [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
+        public async Task WriteAsyncByteArray()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            await memoryStream.WriteAsync(_readWriteBuffer, 0, _readWriteBuffer.Length, CancellationToken.None);
+        }
+
+        [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
+        public async Task WriteAsyncMemory()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            await memoryStream.WriteAsync(_readWriteBuffer, CancellationToken.None);
+        }
+
+        [Benchmark]
+        public void CopyTo()
+        {
+            using Stream src = GetMemoryStream();
+            using Stream dest = new MemoryStream();
+            src.CopyTo(dest);
+        }
+
+        [Benchmark]
+        [BenchmarkCategory(Categories.NoWASM)]
+        public async Task CopyToAsync()
+        {
+            using Stream src = GetMemoryStream();
+            using Stream dest = new MemoryStream();
+            await src.CopyToAsync(dest);
+        }
+    }
+}
+#endif
