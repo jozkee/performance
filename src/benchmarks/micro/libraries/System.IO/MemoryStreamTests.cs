@@ -1,4 +1,3 @@
-#if NET8_0_OR_GREATER
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Extensions;
 using MicroBenchmarks;
@@ -11,48 +10,47 @@ namespace System.IO.Tests
     public class MemoryStreamTests
     {
         private byte[] _readWriteBuffer;
-        private byte[] _streamBufferArray;
-        //private Memory<byte> _streamBufferMemory;
+        private byte[] _streamBuffer;
 
-        //[Params(false, true)]
-        //public bool UseMemoryCtor;
-
-        [Params(64, 1024, 10_000, 64_000)]
+        [Params(1, 100, 100_000, 100_000_000)]//0x7FFFFFC7 /*Array max length*/)]
         public int BufferSize;
 
-        [GlobalSetup(Targets = new[] { nameof(ReadByteArray), nameof(ReadSpan), nameof(ReadAsyncByteArray), nameof(ReadAsyncMemory), nameof(CopyTo), nameof(CopyToAsync) })]
+        [GlobalSetup(Targets = new[] { nameof(ReadByte), nameof(ReadByteArray), nameof(ReadAsyncByteArray),
+#if NETCOREAPP
+            nameof(ReadSpan), nameof(ReadAsyncMemory),
+#endif
+            nameof(CopyTo), nameof(CopyToAsync) })]
         public void ReadSetup()
         {
             _readWriteBuffer = new byte[BufferSize];
-            _streamBufferArray = ValuesGenerator.Array<byte>(BufferSize);
-            //_streamBufferMemory = _streamBufferArray;
+            _streamBuffer = ValuesGenerator.Array<byte>(BufferSize);
         }
 
-        [GlobalSetup(Targets = new[] { nameof(WriteByteArray), nameof(WriteSpan), nameof(WriteAsyncByteArray), nameof(WriteAsyncMemory) })]
+        [GlobalSetup(Targets = new[] { nameof(WriteByte), nameof(WriteByteArray), nameof(WriteAsyncByteArray),
+#if NETCOREAPP
+            nameof(WriteSpan), nameof(WriteAsyncMemory)
+#endif
+        })]
         public void WriteSetup()
         {
             _readWriteBuffer = ValuesGenerator.Array<byte>(BufferSize);
-            _streamBufferArray = new byte[BufferSize];
-            //_streamBufferMemory = _streamBufferArray;
+            _streamBuffer = new byte[BufferSize];
         }
 
-        private Stream GetMemoryStream() => new MemoryStream(_streamBufferArray);
-        //=> UseMemoryCtor ?
-        //    new MemoryStream(_streamBufferMemory) :
-        //    new MemoryStream(_streamBufferArray);
+        private Stream GetMemoryStream() => new MemoryStream(_streamBuffer);
+
+        [Benchmark]
+        public void ReadByte()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            while (memoryStream.ReadByte() != -1) ;
+        }
 
         [Benchmark]
         public void ReadByteArray()
         {
             using Stream memoryStream = GetMemoryStream();
             while (memoryStream.Read(_readWriteBuffer, 0, _readWriteBuffer.Length) > 0) ;
-        }
-
-        [Benchmark]
-        public void ReadSpan()
-        {
-            using Stream memoryStream = GetMemoryStream();
-            while (memoryStream.Read(_readWriteBuffer) > 0) ;
         }
 
         [Benchmark]
@@ -63,12 +61,33 @@ namespace System.IO.Tests
             while (await memoryStream.ReadAsync(_readWriteBuffer, 0, _readWriteBuffer.Length, CancellationToken.None) > 0) ;
         }
 
+#if NETCOREAPP
+        [Benchmark]
+        public void ReadSpan()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            while (memoryStream.Read(_readWriteBuffer) > 0) ;
+        }
+
         [Benchmark]
         [BenchmarkCategory(Categories.NoWASM)]
         public async Task ReadAsyncMemory()
         {
             using Stream memoryStream = GetMemoryStream();
             while (await memoryStream.ReadAsync(_readWriteBuffer, CancellationToken.None) > 0) ;
+        }
+#endif
+
+        [Benchmark]
+        public void WriteByte()
+        {
+            using Stream memoryStream = GetMemoryStream();
+
+            int i = 0;
+            while (i < _readWriteBuffer.Length)
+            {
+                memoryStream.WriteByte(_readWriteBuffer[i++]);
+            }
         }
 
         [Benchmark]
@@ -79,18 +98,19 @@ namespace System.IO.Tests
         }
 
         [Benchmark]
-        public void WriteSpan()
-        {
-            using Stream memoryStream = GetMemoryStream();
-            memoryStream.Write(_readWriteBuffer);
-        }
-
-        [Benchmark]
         [BenchmarkCategory(Categories.NoWASM)]
         public async Task WriteAsyncByteArray()
         {
             using Stream memoryStream = GetMemoryStream();
             await memoryStream.WriteAsync(_readWriteBuffer, 0, _readWriteBuffer.Length, CancellationToken.None);
+        }
+
+#if NETCOREAPP
+        [Benchmark]
+        public void WriteSpan()
+        {
+            using Stream memoryStream = GetMemoryStream();
+            memoryStream.Write(_readWriteBuffer);
         }
 
         [Benchmark]
@@ -100,6 +120,7 @@ namespace System.IO.Tests
             using Stream memoryStream = GetMemoryStream();
             await memoryStream.WriteAsync(_readWriteBuffer, CancellationToken.None);
         }
+#endif
 
         [Benchmark]
         public void CopyTo()
@@ -119,4 +140,3 @@ namespace System.IO.Tests
         }
     }
 }
-#endif
